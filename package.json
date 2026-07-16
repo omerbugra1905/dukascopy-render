@@ -1,0 +1,18 @@
+{
+  "name": "dukascopy-render",
+  "version": "1.0.0",
+  "description": "Exhaustion Reversal v2.2 backtest icin Dukascopy tabanli veri servisi (bugraapi ile ayni format). Sadece arastirma.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dukascopy-node": "latest",
+    "express": "^4.19.2"
+  }
+}

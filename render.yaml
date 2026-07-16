@@ -1,0 +1,10 @@
+# Render Blueprint — GitHub'a push edip Render'da "New > Blueprint" ile baglanabilir.
+# Ya da manuel "New > Web Service" ile de kurulabilir (README'ye bak).
+services:
+  - type: web
+    name: dukascopy-render
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /health

@@ -1,0 +1,25 @@
+{
+  "_aciklama": "Kullanici bilinen sembol/interval ismiyle sorar, Dukascopy ID'sine cevrilir. Yeni sembol eklemek icin buraya satir ekle, kod degismez.",
+  "symbols": {
+    "XAUUSD": "xauusd",
+    "XAGUSD": "xagusd",
+    "NDX": "usatechidxusd",
+    "DE30": "deuidxeur",
+    "JP225": "jpnidxjpy",
+    "HK33": "hkgidxhkd",
+    "WTI": "lightcmdusd",
+    "BRENT": "brentcmdusd",
+    "COPPER": "coppercmdusd",
+    "XPTUSD": "xptcmdusd",
+    "XPDUSD": "xpdcmdusd",
+    "RUSSELL": "ussc2000idxusd"
+  },
+  "intervals": {
+    "1m": "m1",
+    "5m": "m5",
+    "15m": "m15",
+    "1h": "h1",
+    "4h": "h4",
+    "1d": "d1"
+  }
+}
