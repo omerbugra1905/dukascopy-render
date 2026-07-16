@@ -22,7 +22,7 @@ const INTERVAL_MINUTES = { m1: 1, m5: 5, m15: 15, m30: 30, h1: 60, h4: 240, d1: 
 
 const PORT = process.env.PORT || 3000;
 const START = Date.now();
-const FETCH_TIMEOUT_MS = 30000; // 30 sn (gorev gereksinimi)
+const FETCH_TIMEOUT_MS = 90000; // 90 sn (Render cold-start + genis aralik icin)
 
 // --- yardimcilar ------------------------------------------------------------
 
@@ -63,6 +63,8 @@ app.get("/", (req, res) => {
 // --- ana endpoint: /candles/:symbol/:interval -------------------------------
 
 app.get("/candles/:symbol/:interval", async (req, res) => {
+  console.log(`Request: ${req.originalUrl}`); // gelen her istegi logla
+
   const symRaw = String(req.params.symbol).toUpperCase();
   const tfRaw = String(req.params.interval).toLowerCase();
 
@@ -100,6 +102,10 @@ app.get("/candles/:symbol/:interval", async (req, res) => {
     setTimeout(() => reject(new Error("__timeout__")), FETCH_TIMEOUT_MS)
   );
 
+  // Dukascopy fetch basliyor
+  console.log(`Fetching ${instrument} ${timeframe} from Dukascopy...`);
+  const t0 = Date.now();
+
   try {
     const data = await Promise.race([
       getHistoricalRates({
@@ -117,14 +123,26 @@ app.get("/candles/:symbol/:interval", async (req, res) => {
 
     let values = toValues(data || []);
     if (n && values.length > n) values = values.slice(-n); // son N mum
+
+    const secs = ((Date.now() - t0) / 1000).toFixed(1);
+    console.log(`Success: ${values.length} candles received in ${secs}s`);
     res.json({ values });
   } catch (err) {
+    const secs = ((Date.now() - t0) / 1000).toFixed(1);
+
+    // DETAYLI hata dokumu — Render loglarinda gorunsun
+    console.error("Dukascopy full error:", err);
+    console.error(`  message: ${err && err.message}`);
+    console.error(`  code:    ${err && err.code}`);
+    console.error(`  stack:   ${err && err.stack}`);
+
     const msg = String((err && err.message) || err);
     if (msg === "__timeout__") {
+      console.error(`  -> ${FETCH_TIMEOUT_MS / 1000}s timeout asildi (${secs}s sonra)`);
       return res.status(504).json({ error: "timeout", detail: `${FETCH_TIMEOUT_MS / 1000}s asildi` });
     }
     // Dukascopy tarafindaki hata (gecersiz ID, feed erisilemez vb.)
-    return res.status(500).json({ error: "dukascopy error", detail: msg });
+    return res.status(500).json({ error: "dukascopy error", detail: msg, code: (err && err.code) || null });
   }
 });
 
