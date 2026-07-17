@@ -17,17 +17,11 @@ const maps = require("./symbols.json");
 // Cozum: IPv4'u zorla + makul timeout'lar. dukascopy-node global fetch kullandigi
 // icin bu ayarlar onun internal cagrilarini da etkiler (kaynak: dist/index.js fetch()).
 const dns = require("node:dns");
-dns.setDefaultResultOrder("ipv4first"); // built-in: tum DNS'i IPv4-once (backstop, garanti)
+dns.setDefaultResultOrder("ipv4first"); // built-in: tum DNS'i IPv4-once (zararsiz, DNS zaten IPv4)
 
-const { setGlobalDispatcher, Agent } = require("undici");
-setGlobalDispatcher(
-  new Agent({
-    connect: { family: 4, timeout: 30000 }, // sadece IPv4 + 30sn TCP connect timeout
-    headersTimeout: 60000,
-    bodyTimeout: 90000,
-    keepAliveTimeout: 60000,
-  })
-);
+// NOT: undici setGlobalDispatcher KALDIRILDI. Dayanagi (IPv6 sorunu) /diag ile curudu:
+// DNS zaten IPv4 donuyor + Dukascopy'ye TCP443 153ms'de baglaniyor. Undici v6 override'i
+// Node v26'da fetch'i takabilir; gereksiz oldugu icin cikartildi. Sorun fetch katmaninda.
 
 const net = require("node:net");
 
@@ -122,6 +116,32 @@ app.get("/diag", async (req, res) => {
     dukascopy_tcp443: dukascopy, // ok:true = ulasilabilir | error:ETIMEDOUT = IP blogu
     control_github_tcp443: control, // ok:true ama dukascopy timeout => Dukascopy Render'i blokluyor
   });
+});
+
+// --- teshis 2: GERCEK fetch (retryCount:0 -> ham hata cause'u korunur) --------
+// dukascopy-node'un fetch'i tek dosyada ne yapiyor: veri mi donuyor, hangi hata mi?
+app.get("/diag2", async (req, res) => {
+  const to = new Date();
+  const from = new Date(to.getTime() - 24 * 60 * 60 * 1000); // son 24 saat
+  const out = { node: process.version };
+  for (const [name, instrument] of [["XAUUSD", "xauusd"], ["DE30", "deuidxeur"]]) {
+    const t0 = Date.now();
+    try {
+      const data = await getHistoricalRates({
+        instrument, dates: { from, to }, timeframe: "h1",
+        format: "json", volumes: true, retryCount: 0, useCache: false,
+      });
+      out[name] = { ok: true, candles: (data || []).length, sample: (data || [])[0] || null, ms: Date.now() - t0 };
+    } catch (e) {
+      out[name] = {
+        ok: false, ms: Date.now() - t0,
+        message: e && e.message, name: e && e.name, code: e && e.code,
+        cause: e && e.cause ? { code: e.cause.code, message: e.cause.message, errno: e.cause.errno, syscall: e.cause.syscall } : null,
+        validationErrors: (e && e.validationErrors) || null,
+      };
+    }
+  }
+  res.json(out);
 });
 
 // --- kok: kisa kullanim bilgisi --------------------------------------------
