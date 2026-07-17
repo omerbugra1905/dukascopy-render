@@ -29,8 +29,30 @@ setGlobalDispatcher(
   })
 );
 
+const net = require("node:net");
+
 const app = express();
 app.use(cors()); // dev icin her yerden erisime izin ver
+
+// Ham TCP connect testi (443). fetch/undici katmanindan bagimsiz, net sonuc verir:
+// baglandi mi, yoksa ETIMEDOUT/ECONNREFUSED/ENETUNREACH mi.
+function tcpProbe(host, port = 443, timeout = 12000) {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    let done = false;
+    const sock = net.connect({ host, port });
+    const finish = (r) => {
+      if (done) return;
+      done = true;
+      try { sock.destroy(); } catch {}
+      resolve({ host, port, ...r, ms: Date.now() - started });
+    };
+    sock.setTimeout(timeout);
+    sock.once("connect", () => finish({ ok: true }));
+    sock.once("timeout", () => finish({ ok: false, error: "TCP connect timeout" }));
+    sock.once("error", (e) => finish({ ok: false, error: e.code || e.message }));
+  });
+}
 
 const SYMBOL_MAP = maps.symbols; // "XAUUSD" -> "xauusd"
 const INTERVAL_MAP = maps.intervals; // "1h" -> "h1"
@@ -81,6 +103,25 @@ function toValues(rows) {
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok", uptime: Math.floor((Date.now() - START) / 1000) });
+});
+
+// --- teshis: Render -> Dukascopy baglantisi gercekten var mi? ----------------
+// datafeed.dukascopy.com'a ham TCP443 dener + kontrol icin github. DNS'i de gosterir.
+app.get("/diag", async (req, res) => {
+  let dnsInfo = null;
+  try {
+    dnsInfo = await dns.promises.lookup("datafeed.dukascopy.com", { all: true });
+  } catch (e) {
+    dnsInfo = { error: (e && e.message) || String(e) };
+  }
+  const dukascopy = await tcpProbe("datafeed.dukascopy.com", 443);
+  const control = await tcpProbe("api.github.com", 443); // kontrol: Render disari cikabiliyor mu
+  res.json({
+    node: process.version,
+    dns_datafeed: dnsInfo, // family:6 cikarsa IPv6 sorunu; IP'ler gorunur
+    dukascopy_tcp443: dukascopy, // ok:true = ulasilabilir | error:ETIMEDOUT = IP blogu
+    control_github_tcp443: control, // ok:true ama dukascopy timeout => Dukascopy Render'i blokluyor
+  });
 });
 
 // --- kok: kisa kullanim bilgisi --------------------------------------------
