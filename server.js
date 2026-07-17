@@ -11,6 +11,24 @@ const cors = require("cors");
 const { getHistoricalRates } = require("dukascopy-node");
 const maps = require("./symbols.json");
 
+// --- AG AYARI (Render Oregon -> Dukascopy Isvicre) ---------------------------
+// Sorun: Node native fetch, host'u once IPv6'dan deniyor; Render'da IPv6 route
+// olmayinca ~60sn takilip "fetch failed" veriyor (code: undefined). TLS degil, network.
+// Cozum: IPv4'u zorla + makul timeout'lar. dukascopy-node global fetch kullandigi
+// icin bu ayarlar onun internal cagrilarini da etkiler (kaynak: dist/index.js fetch()).
+const dns = require("node:dns");
+dns.setDefaultResultOrder("ipv4first"); // built-in: tum DNS'i IPv4-once (backstop, garanti)
+
+const { setGlobalDispatcher, Agent } = require("undici");
+setGlobalDispatcher(
+  new Agent({
+    connect: { family: 4, timeout: 30000 }, // sadece IPv4 + 30sn TCP connect timeout
+    headersTimeout: 60000,
+    bodyTimeout: 90000,
+    keepAliveTimeout: 60000,
+  })
+);
+
 const app = express();
 app.use(cors()); // dev icin her yerden erisime izin ver
 
@@ -29,6 +47,22 @@ const FETCH_TIMEOUT_MS = 90000; // 90 sn (Render cold-start + genis aralik icin)
 // timestamp(ms) -> "YYYY-MM-DDTHH:mm:ss" (UTC, bugraapi/twelvedata ile birebir)
 function fmtDate(ts) {
   return new Date(ts).toISOString().slice(0, 19);
+}
+
+// Teshis probe'u: dukascopy-node retry sarmalayicisi gercek hatayi (err.cause) silebiliyor.
+// Bir fetch hatasinda datafeed host'una tek dogrudan istek atip HAM ag hatasini logla.
+async function probeDukascopy() {
+  const url = "https://datafeed.dukascopy.com/";
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 15000);
+    const r = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(t);
+    console.error(`  [probe] datafeed erisildi: HTTP ${r.status}`);
+  } catch (e) {
+    console.error("  [probe] datafeed HATASI:", (e && e.message) || e);
+    if (e && e.cause) console.error("  [probe] cause:", e.cause); // ECONNREFUSED/ETIMEDOUT/ENETUNREACH...
+  }
 }
 
 // dukascopy JSON satirlari -> bugraapi "values" formati (tum alanlar STRING)
@@ -135,8 +169,17 @@ app.get("/candles/:symbol/:interval", async (req, res) => {
     console.error(`  message: ${err && err.message}`);
     console.error(`  code:    ${err && err.code}`);
     console.error(`  stack:   ${err && err.stack}`);
+    // native fetch gercek sebebi err.cause icinde saklar (varsa)
+    if (err && err.cause) {
+      console.error("  cause:", err.cause);
+      console.error(`  cause.code: ${err.cause.code}  errno: ${err.cause.errno}  address: ${err.cause.address || ""} family: ${err.cause.family || ""}`);
+    }
 
     const msg = String((err && err.message) || err);
+    // "fetch failed" (cause silinmis) ise dogrudan probe ile ham ag hatasini yakala
+    if (msg === "fetch failed" || (msg.includes("fetch") && !(err && err.cause))) {
+      await probeDukascopy();
+    }
     if (msg === "__timeout__") {
       console.error(`  -> ${FETCH_TIMEOUT_MS / 1000}s timeout asildi (${secs}s sonra)`);
       return res.status(504).json({ error: "timeout", detail: `${FETCH_TIMEOUT_MS / 1000}s asildi` });
