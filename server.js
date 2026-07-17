@@ -56,7 +56,7 @@ const INTERVAL_MINUTES = { m1: 1, m5: 5, m15: 15, m30: 30, h1: 60, h4: 240, d1: 
 
 const PORT = process.env.PORT || 3000;
 const START = Date.now();
-const FETCH_TIMEOUT_MS = 90000; // 90 sn (Render cold-start + genis aralik icin)
+const FETCH_TIMEOUT_MS = 170000; // 170 sn: h1 aylik dosyalar + Dukascopy metadata gecikmesi yavas
 
 // --- yardimcilar ------------------------------------------------------------
 
@@ -210,7 +210,8 @@ app.get("/candles/:symbol/:interval", async (req, res) => {
         priceType: "bid",
         format: "json",
         volumes: true,
-        retryCount: 3,
+        retryCount: 1, // 3->1: her retry sureyi katliyordu (aylik dosya zaten yavas)
+        pauseBetweenBatchesMs: 200, // default 1000 -> 200 (birden fazla ay varsa hizlandirir)
         useCache: false,
       }),
       timeout,
