@@ -5,6 +5,7 @@ services:
     name: dukascopy-render
     env: node
     plan: free
+    region: frankfurt          # KOK COZUM: Dukascopy Isvicre'ye komsu -> Oregon flaky 500'leri biter
     buildCommand: npm install
     startCommand: node server.js
     healthCheckPath: /health
