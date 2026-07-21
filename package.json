@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "cors": "^2.8.5",
-    "dukascopy-node": "latest",
+    "dukascopy-node": "1.46.4",
     "express": "^4.19.2",
     "undici": "^6.21.3"
   }
